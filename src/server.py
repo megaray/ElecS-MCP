@@ -9,7 +9,11 @@ Contract (AGENTS.md):
 
 from __future__ import annotations
 
+import logging
+
 from fastmcp import FastMCP
+
+logger = logging.getLogger(__name__)
 
 from src.renderer import (
     CircuitSpec,
@@ -113,6 +117,8 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.transport == "http":
+        logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+        logger.info("elecs-mcp starting HTTP+SSE transport on http://0.0.0.0:%d", args.port)
         mcp.run(transport="http", host="0.0.0.0", port=args.port)
     else:
         mcp.run(transport="stdio")
