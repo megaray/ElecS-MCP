@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "elecs-mcp"
+version = "0.1.0"
+description = "MCP server for inline electronic schematic rendering via SchemDraw"
+requires-python = ">=3.11"
+dependencies = [
+    "schemdraw>=0.19",
+    "fastmcp>=2.0",
+    "matplotlib>=3.8",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[project.scripts]
+elecs-mcp = "src.server:main"
