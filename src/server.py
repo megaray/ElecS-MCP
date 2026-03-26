@@ -80,8 +80,42 @@ def validate_spec(spec: dict) -> dict:
 
 
 def main() -> None:
-    """Entry point — run the MCP server over stdio (default for Claude Desktop)."""
-    mcp.run(transport="stdio")
+    """Entry point — parse --transport and --port, then start the server.
+
+    Transports:
+        stdio  (default) — for Claude Desktop, communicates over stdin/stdout.
+        http             — HTTP+SSE, binds to 0.0.0.0:PORT for remote clients
+                           (e.g. Raspberry Pi deployment).
+
+    Usage:
+        python -m src.server                        # stdio
+        python -m src.server --transport http       # HTTP on port 8000
+        python -m src.server --transport http --port 9000
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="elecs-mcp",
+        description="ElecS MCP server — electronic schematic renderer",
+    )
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "http"],
+        default="stdio",
+        help="Transport protocol (default: stdio)",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Port to bind when using HTTP transport (default: 8000)",
+    )
+    args = parser.parse_args()
+
+    if args.transport == "http":
+        mcp.run(transport="http", host="0.0.0.0", port=args.port)
+    else:
+        mcp.run(transport="stdio")
 
 
 if __name__ == "__main__":
