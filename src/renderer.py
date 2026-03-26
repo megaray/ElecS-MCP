@@ -30,7 +30,9 @@ ValidationResult = dict[str, Any]
 # Component registry
 # ---------------------------------------------------------------------------
 
-# Maps CircuitSpec element type → (schemdraw class, human description)
+# Maps CircuitSpec element type → (schemdraw class, human description).
+# resistor entry is filled in at module load time after style resolution;
+# _COMPONENT_MAP holds the ANSI default — render_schematic overrides for IEC.
 _COMPONENT_MAP: dict[str, tuple[type, str]] = {
     "resistor":       (elm.Resistor,  "Resistor (ANSI zigzag / IEC rectangle)"),
     "capacitor":      (elm.Capacitor, "Capacitor"),
@@ -40,8 +42,11 @@ _COMPONENT_MAP: dict[str, tuple[type, str]] = {
     "wire":           (elm.Line,      "Plain conductor segment"),
 }
 
-# Direction sequence for a simple series loop (down the right side, back left)
-_SERIES_DIRECTIONS = ["up", "right", "down", "left"]
+def _resistor_class(style: str | None) -> type:
+    """Return elm.ResistorIEC for IEC style, elm.Resistor otherwise."""
+    if style == "IEC":
+        return elm.ResistorIEC  # rectangle symbol, verified present in schemdraw
+    return elm.Resistor  # ANSI zigzag (default)
 
 
 # ---------------------------------------------------------------------------
@@ -73,37 +78,49 @@ def render_schematic(spec: CircuitSpec) -> SVGString:
         raise RenderError("; ".join(result["errors"]))
 
     elements = spec["elements"]
+    style = spec.get("style", "IEC")
 
     try:
         d = schemdraw.Drawing(canvas="svg")
 
-        # Simple heuristic layout: place elements in sequence, cycling through
-        # up → right → down → left to form a closed loop.
-        dir_cycle = _SERIES_DIRECTIONS
-        dir_idx = 0
+        # Record the origin so the closing lines can snap back exactly.
+        start = d.here  # Point(0, 0)
 
-        for elem in elements:
+        # Separate non-ground elements from ground markers.
+        active = [e for e in elements if e["type"] != "ground"]
+        ground_elements = [e for e in elements if e["type"] == "ground"]
+
+        # --- Top wire: place each active element going RIGHT ---
+        for elem in active:
             etype = elem["type"]
 
-            if etype == "ground":
-                # Ground anchors to current position; no direction advance.
-                d += elm.Ground()
-                continue
+            # Style-aware resistor selection; all others use the registry.
+            if etype == "resistor":
+                cls = _resistor_class(style)
+            else:
+                cls = _COMPONENT_MAP[etype][0]
 
-            cls = _COMPONENT_MAP[etype][0]
-            el = cls()
-
-            direction = dir_cycle[dir_idx % len(dir_cycle)]
-            el = getattr(el, direction)()
-            dir_idx += 1
-
-            # Build label: id first, then value if present
             label_parts = [elem["id"]]
             if elem.get("value"):
                 label_parts.append(elem["value"])
-            el = el.label("\n".join(label_parts))
 
-            d += el
+            d += cls().right().label("\n".join(label_parts))
+
+        top_right = d.here  # corner after last active element
+
+        # --- Right side: drop straight down ---
+        d += elm.Line().down()
+
+        # --- Bottom wire: return left to x=0 ---
+        d += elm.Line().left().tox(start[0])
+        bottom_left = d.here  # (≈0, negative y)
+
+        # --- Left side: rise back to start ---
+        d += elm.Line().up().toy(start[1])
+
+        # --- Ground symbols: anchor to bottom-left corner ---
+        for _ in ground_elements:
+            d += elm.Ground().at(bottom_left)
 
         svg_bytes: bytes = d.get_imagedata("svg")
         return svg_bytes.decode("utf-8")
